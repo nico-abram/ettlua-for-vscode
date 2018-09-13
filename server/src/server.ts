@@ -458,6 +458,7 @@ function parse2(uri: string, parentStack: any[], tb: any, onlydefine: boolean) {
         for (var i = 0; i < tb.fields.length; i++) {
           if (tb.fields[i].type == "TableKeyString") {
             parse2(uri, parentStack, tb.fields[i].value, onlydefine);
+            parse2(uri, parentStack, tb.fields[i].key, onlydefine);
           } else {
             parse2(uri, parentStack, tb.fields[i], onlydefine);
           }
@@ -468,6 +469,7 @@ function parse2(uri: string, parentStack: any[], tb: any, onlydefine: boolean) {
     case "TableKey":
       if (tb.key != null) {
         parse2(uri, parentStack, tb.key, onlydefine);
+        parse2(uri, parentStack, tb.value, onlydefine);
       }
     case "TableValue":
       if (tb.value != null) {
