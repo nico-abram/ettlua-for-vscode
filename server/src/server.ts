@@ -623,11 +623,15 @@ interface LuaForVsCodeSettings {
   luapath: string;
   includekeyword: string;
   luaversion: number;
+  fallbackScriptLoading: boolean;
+  currentThemeScriptLoading: boolean;
 }
 
 // hold the maxNumberOfProblems setting
 var luapaths: string[] = [];
 let LuaVersion: number;
+var fallbackScriptLoading = true;
+var currentThemeScriptLoading = true;
 // The settings have changed. Is send on server activation
 // as well.
 connection.onDidChangeConfiguration(change => {
@@ -636,6 +640,11 @@ connection.onDidChangeConfiguration(change => {
   if (luapathconfig != null) {
     luapaths = luapathconfig.split(";");
   }
+  let f = settings.luaforvscode.fallbackScriptLoading;
+  if (f != null) fallbackScriptLoading = f;
+
+  let c = settings.luaforvscode.currentThemeScriptLoading;
+  if (c != null) currentThemeScriptLoading = c;
 
   LuaVersion = settings.luaforvscode.luaversion;
   let includekeyword: string = settings.luaforvscode.includekeyword;
@@ -750,12 +759,10 @@ function globalDefinitions(identifier) {
     var uri = globalFilesParsed[i];
     var luaFile = filesParsed[uri];
     if (!luaFile) {
-      connection.console.log(uri + " was nullnulllllll");
       continue;
     }
     definitionsFor(luaFile, identifier, list);
   }
-  connection.console.log(JSON.stringify(list));
   return list;
 }
 
@@ -786,14 +793,11 @@ onDef = (
     }
   }
   if (identifier == null) {
-    connection.console.log("apsa");
     return list;
   }
   definitionsFor(luaFile, identifier, list);
   if (list.length == 0) return globalDefinitions(identifier);
-  if (list.length == 0) connection.console.log("ups");
 
-  connection.console.log(JSON.stringify(list));
   return list;
 };
 connection.onDefinition(onDef);
