@@ -1,5 +1,14 @@
 {
-  "type": "TableKeyString",
-  "key": { "type": "Identifier", "name": "a" },
-  "value": { "type": "NumericLiteral", "value": 1, "raw": "1" }
+  "version": "0.1.0",
+  "configurations": [
+    {
+      "name": "Attach to TS Server",
+      "type": "node",
+      "request": "launch",
+      "protocol": "inspector",
+      "port": 6009,
+      "sourceMaps": true,
+      "outFiles": ["/path/to/repo/TypeScript/built/local"]
+    }
+  ]
 }

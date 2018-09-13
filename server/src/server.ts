@@ -55,13 +55,18 @@ connection.onInitialize(
     workspaceRoot = params.rootPath;
     var files = glob.sync(workspaceRoot + "/Scripts/*.lua");
     for (var i = 0; i < files.length; i++) {
-      let file = "/Scripts/" + files[i].replace(/^.*[\\\/]/, "");
+      let file = "./Scripts/" + files[i].replace(/^.*[\\\/]/, "");
       if (!fs.lstatSync(file).isFile()) break;
-      parseDependency(null, file, true);
+      parseDependency(
+        null,
+        file,
+        true,
+        workspaceRoot + "/Scripts/" + files[i].replace(/^.*[\\\/]/, "")
+      );
     }
-    files = glob.sync(workspaceRoot + "/../_fallback/Scripts/*.lua");
+    files = glob.sync(workspaceRoot + "./../_fallback/Scripts/*.lua");
     for (var i = 0; i < files.length; i++) {
-      let file = "/../_fallback/Scripts/" + files[i].replace(/^.*[\\\/]/, "");
+      let file = "./../_fallback/Scripts/" + files[i].replace(/^.*[\\\/]/, "");
       if (!fs.lstatSync(file).isFile()) break;
       parseDependency(null, file, true);
     }
@@ -87,7 +92,7 @@ class LuaFile {
     range: Range;
     uri: string;
   }>;
-  locals: Array<{ label: string; range: Range; uri: string }>;
+  locals: Array<{ label: string; range: Range; uri: string; base: any }>;
   identifiers: Array<{ name: string; range: Range }>;
   parameters: Array<{ label: string; range: Range; uri: string }>;
   functions: Array<{ label: string; range: Range; uri: string; base: any }>;
@@ -148,12 +153,16 @@ function uniformPath(pathUri: string): string {
 function parseDependency(
   parentUri: string | null,
   dependencyPath: string,
-  global?: boolean
+  global?: boolean,
+  path?: string | false
 ) {
   if (global == undefined) global = false;
+  if (path == undefined) path = false;
   var text = fs.readFileSync(dependencyPath);
   var uri2 = "file:///" + dependencyPath;
-  if (global) uri2 = "file:///" + workspaceRoot + dependencyPath;
+  if (global) {
+    uri2 = "file:///" + (path ? path : workspaceRoot + dependencyPath);
+  }
   uri2 = uniformPath(uri2);
 
   var luaFile: LuaFile = filesParsed[uri2];
@@ -262,16 +271,8 @@ function updatefile(uri: string, isSaving: boolean) {
       parse2(uniuri, [], tb, false);
     }
   } catch (err) {
-    console.log(`${err} : ${uri}`);
+    connection.console.log(`${err} : ${uri}`);
     //connection.window.showErrorMessage(`${err} : ${uri}`);
-  }
-}
-
-function findParent(parent: any[]): any {
-  for (var i = 0; i < parent.length; i++) {
-    if (parent[i] != null && parent[i].identifier != null) {
-      return parent[i];
-    }
   }
 }
 
@@ -316,6 +317,23 @@ function getAsBaseStr(element: any) {
   return element.label != null ? element.label : "";
 }
 
+function parseTableConstructors(initializer, parent, uri, tb) {
+  if (initializer.type == "TableConstructorExpression") {
+    for (var j = 0; j < initializer.fields.length; j++) {
+      parseTableConstructors(initializer.fields[j], parent, uri, tb);
+    }
+  } else if (initializer.type == "TableKeyString") {
+    var name = getAsNameStr(initializer.key);
+    if (name == null || name == "") return;
+    filesParsed[uri].locals.push({
+      uri: uri,
+      base: parent,
+      label: name,
+      range: GetLoc(initializer)
+    });
+  }
+}
+
 function parse2(uri: string, parentStack: any[], tb: any, onlydefine: boolean) {
   if (tb == undefined) return;
   switch (tb.type) {
@@ -324,9 +342,6 @@ function parse2(uri: string, parentStack: any[], tb: any, onlydefine: boolean) {
         name: tb.name,
         range: GetLoc(tb)
       });
-      if (onlydefine) {
-        break;
-      }
       break;
     case "IndexExpression":
       if (tb.base != null) {
@@ -352,24 +367,42 @@ function parse2(uri: string, parentStack: any[], tb: any, onlydefine: boolean) {
       });
       break;
     case "LocalStatement":
-      if (tb.variables != null) {
-        for (var i = 0; i < tb.variables.length; i++) {
-          if (tb.variables[i] != null && tb.variables[i].type == "Identifier") {
-            filesParsed[uri].locals.push({
-              uri: uri,
-              label: tb.variables[i].name,
-              range: GetLoc(tb.variables[i])
-            });
+      if (tb.variables == null) break;
+      for (var i = 0; i < tb.variables.length; i++) {
+        parse2(uri, parentStack, tb.variables[i], onlydefine);
+        var local = null;
+        if (tb.variables[i] != null && tb.variables[i].type == "Identifier") {
+          local = {
+            uri: uri,
+            label: tb.variables[i].name,
+            range: GetLoc(tb.variables[i])
+          };
+          filesParsed[uri].locals.push(local);
+        }
+        if (tb.init != null && tb.init[i] != null) {
+          var initializer = tb.init[i];
+          parse2(uri, parentStack, initializer, onlydefine);
+          if (tb.init[i].type == "TableConstructorExpression") {
+            for (var j = 0; j < initializer.fields.length; j++) {
+              if (initializer.fields[j].type == "TableKeyString") {
+                var name = getAsNameStr(initializer.fields[j].key);
+                if (name == null || name == "") continue;
+                filesParsed[uri].locals.push({
+                  uri: uri,
+                  base: local,
+                  label: name,
+                  range: GetLoc(tb)
+                });
+              }
+            }
           }
         }
-        parse2(uri, parentStack, tb.variables, onlydefine);
       }
+      parse2(uri, parentStack, tb.variables, onlydefine);
       break;
     case "TableCallExpression":
       parse2(uri, parentStack, tb.base, onlydefine);
-      for (var i = 0; i < tb.arguments.length; i++) {
-        parse2(uri, parentStack, tb.arguments[i], onlydefine);
-      }
+      parse2(uri, parentStack, tb.arguments, onlydefine);
       break;
     case "AssignmentStatement":
       if (tb.variables == null) {
@@ -396,25 +429,25 @@ function parse2(uri: string, parentStack: any[], tb: any, onlydefine: boolean) {
             range: GetLoc(tb.variables[i])
           };
         }
-        if (assignment == null) break;
+        if (assignment == null) continue;
         filesParsed[uri].assignments.push(assignment);
+
         if (tb.init != null && tb.init[i] != null) {
-          parse2(uri, parentStack, tb.init[i], onlydefine);
-          if (
-            tb.init[i].type == "TableConstructorExpression" &&
-            tb.fields != null &&
-            tb.fields[i] != null &&
-            tb.field[i].type == "TableKeyString"
-          ) {
-            var name = getAsNameStr(tb.fields[i].key);
-            if (name == null || name == "") break;
-            for (var i = 0; i < tb.fields.length; i++) {
-              filesParsed[uri].assignments.push({
-                uri: uri,
-                base: assignment,
-                label: name,
-                range: GetLoc(tb)
-              });
+          var initializer = tb.init[i];
+          parse2(uri, parentStack, initializer, onlydefine);
+          parseTableConstructors(initializer, assignment, uri, tb);
+          if (initializer.type == "TableConstructorExpression") {
+            for (var j = 0; j < initializer.fields.length; j++) {
+              if (initializer.fields[j].type == "TableKeyString") {
+                var name = getAsNameStr(initializer.fields[i].key);
+                if (name == null || name == "") continue;
+                filesParsed[uri].locals.push({
+                  uri: uri,
+                  base: assignment,
+                  label: name,
+                  range: GetLoc(tb)
+                });
+              }
             }
           }
         }
@@ -652,11 +685,29 @@ function definitionsFor(luaFile: LuaFile, identifier: any, listToAddTo: any) {
   var funcs = luaFile.functions;
   var locals = luaFile.locals;
   for (var i = 0; i < locals.length; i++) {
-    if (locals[i].label == identifier.name && identifier.base == null) {
+    if (
+      locals[i].label == identifier.name &&
+      (identifier.base == null ||
+        getBaseStrFor(identifier.base) == getBaseStrFor(locals[i]).base)
+    ) {
       var loc = {
         label: locals[i].label,
         uri: locals[i].uri,
         range: locals[i].range
+      };
+      list.push(loc);
+    }
+  }
+  for (var i = 0; i < funcs.length; i++) {
+    if (
+      funcs[i].label == identifier.name &&
+      (identifier.base == null ||
+        getBaseStrFor(identifier.base) == getBaseStrFor(funcs[i]).base)
+    ) {
+      var loc = {
+        label: funcs[i].label,
+        uri: funcs[i].uri,
+        range: funcs[i].range
       };
       list.push(loc);
     }
@@ -685,21 +736,12 @@ function definitionsFor(luaFile: LuaFile, identifier: any, listToAddTo: any) {
       list.push(loc);
     }
   }
-  for (var i = 0; i < assigns.length; i++) {
-    if (
-      assigns[i].label == identifier.name &&
-      (identifier.base == null ||
-        getBaseStrFor(identifier.base) == getBaseStrFor(assigns[i].base))
-    ) {
-      var loc = {
-        label: assigns[i].label,
-        uri: assigns[i].uri,
-        range: assigns[i].range
-      };
-      list.push(loc);
-    }
+  if (list.length == 0) return list;
+  var first = list[0];
+  for (var i = 0; i < list.length; i++) {
+    if (first.range.start.line > list[i].range.start.line) first = list[i];
   }
-  return list;
+  return [first];
 }
 
 function globalDefinitions(identifier) {
@@ -707,11 +749,13 @@ function globalDefinitions(identifier) {
   for (var i = 0; i < globalFilesParsed.length; i++) {
     var uri = globalFilesParsed[i];
     var luaFile = filesParsed[uri];
-    if (!luaFile) break;
+    if (!luaFile) {
+      connection.console.log(uri + " was nullnulllllll");
+      continue;
+    }
     definitionsFor(luaFile, identifier, list);
   }
-  connection.console.log(JSON.stringify(globalFilesParsed));
-  connection.console.log(JSON.stringify(filesParsed));
+  connection.console.log(JSON.stringify(list));
   return list;
 }
 
@@ -742,15 +786,14 @@ onDef = (
     }
   }
   if (identifier == null) {
-    connection.console.log(JSON.stringify(ids));
-    connection.console.log(JSON.stringify(textDocumentPositionParams));
+    connection.console.log("apsa");
     return list;
   }
-  connection.console.log(JSON.stringify(identifier));
-  connection.console.log(JSON.stringify(textDocumentPositionParams));
   definitionsFor(luaFile, identifier, list);
-  connection.console.log(JSON.stringify(list));
   if (list.length == 0) return globalDefinitions(identifier);
+  if (list.length == 0) connection.console.log("ups");
+
+  connection.console.log(JSON.stringify(list));
   return list;
 };
 connection.onDefinition(onDef);
