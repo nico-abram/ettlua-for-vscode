@@ -19,6 +19,22 @@
   "bugs": {
     "url": "https://github.com/nico-abram/lua-for-vscode/issues"
   },
+  "configuration": {
+    "type": "object",
+    "title": "Ettlua",
+    "properties": {
+      "ettluaforvscode.fallbackScriptLoading": {
+        "type": "number",
+        "default": true,
+        "description": "Enable loading definitions globally for the fallback theme for scripts."
+      },
+      "ettluaforvscode.currentThemeScriptLoading": {
+        "type": "boolean",
+        "default": true,
+        "description": "Enable loading definitions globally for the current theme for scripts."
+      }
+    }
+  },
   "activationEvents": [
     "onLanguage:lua"
   ],

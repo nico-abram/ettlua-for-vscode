@@ -33,10 +33,10 @@ export function activate(context: ExtensionContext) {
   // Options to control the language client
   let clientOptions: LanguageClientOptions = {
     // Register the server for plain text documents
-    documentSelector: ["lua"],
+    documentSelector: ["lua", "luadoc", "ldoc"],
     synchronize: {
       // Synchronize the setting section 'languageServerExample' to the server
-      configurationSection: "luaforvscode",
+      configurationSection: "ettluaforvscode",
       // Notify the server about file changes to '.clientrc files contain in the workspace
       fileEvents: workspace.createFileSystemWatcher("**/.clientrc")
     }
@@ -44,7 +44,7 @@ export function activate(context: ExtensionContext) {
 
   // Create the language client and start the client.
   let disposable = new LanguageClient(
-    "lua-for-vscode",
+    "ettlua-for-vscode",
     serverOptions,
     clientOptions
   ).start();
