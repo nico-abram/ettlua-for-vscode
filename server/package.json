@@ -1,15 +1,18 @@
 {
-  "name": "lua-for-vscode-server",
+  "name": "ettlua-for-vscode",
   "description": "implementation of a language server in node.",
-  "version": "0.0.2",
-  "author": "xxxg0001@gmail.com",
+  "version": "0.0.1",
+  "author": "abramlujan@gmail.com",
+  "publisher": "Nick12",
   "license": "MIT",
   "engines": {
-    "node": "*"
+    "node": "*",
+    "vscode": "^1.26.0"
   },
   "dependencies": {
-    "vscode-languageserver": "^2.6.0",
-    "@xxxg0001/luaparse": "^0.2.3"
+    "glob": "^7.1.3",
+    "luaparse": "^0.2.1",
+    "vscode-languageserver": "^2.6.2"
   },
   "devDependencies": {
     "typescript": "^2.1.4"
